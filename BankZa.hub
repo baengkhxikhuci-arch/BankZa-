@@ -1,0 +1,459 @@
+--[[ BankZa Mdz - Arc Warp v5 | Delta Android
+     created by BankZa Mdz
+     + ปุ่มเปิด/ปิดล็อกนิ่ง (สี่เหลี่ยม มุมขวาบน)
+     + หน้าต่างฟังค์ชั่นเล็ก เลื่อนได้อิสระ
+     + UI สวยเท่ หลายฟังก์ชัน ]]
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local VirtualUser = game:GetService("VirtualUser")
+
+local PLR = Players.LocalPlayer
+local MAKER = "BankZa Mdz"
+
+local CFG = {
+    pin = nil, arcHeight = 450, liftTime = 0.10, flyTime = 0.25, dropTime = 0.15,
+    god = true, antiStun = true, godUntil = 0,
+    speed_on = false, speed_val = 16, speed_min = 1, speed_max = 10000
+}
+
+local char, hum, hrp
+local function refresh()
+    char = PLR.Character
+    hum = char and char:FindFirstChildOfClass("Humanoid")
+    hrp = char and char:FindFirstChild("HumanoidRootPart")
+end
+PLR.CharacterAdded:Connect(function() task.wait(0.6) refresh() end)
+refresh()
+
+local function groundAt(pos)
+    local p = RaycastParams.new()
+    p.FilterType = Enum.RaycastFilterType.Exclude
+    p.FilterDescendantsInstances = {char}
+    local hit = workspace:Raycast(pos + Vector3.new(0, 80, 0), Vector3.new(0, -900, 0), p)
+    return hit and (hit.Position + Vector3.new(0, 4, 0)) or (pos + Vector3.new(0, 4, 0))
+end
+
+local function lockStates()
+    hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+    hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+    hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+end
+
+local function moveSteps(fromP, toP, time, steps)
+    local dt = time / steps
+    for i = 1, steps do
+        if not (hrp and hrp.Parent) then return false end
+        hrp.CFrame = CFrame.new(fromP:Lerp(toP, i / steps))
+        if hum.Health < hum.MaxHealth then hum.Health = hum.MaxHealth end
+        if i < steps then task.wait(dt) end
+    end
+    return true
+end
+
+local warping = false
+local function returnBase()
+    if warping or not CFG.pin then return end
+    refresh()
+    if not (hrp and hum) then return end
+    warping = true
+    CFG.godUntil = os.clock() + CFG.liftTime + CFG.flyTime + CFG.dropTime + 1.5
+    lockStates()
+    local g = groundAt(CFG.pin.Position)
+    local s = hrp.CFrame.Position
+    local topY = math.max(s.Y, g.Y) + CFG.arcHeight
+    if not moveSteps(s, Vector3.new(s.X, topY, s.Z), CFG.liftTime, 6) then warping = false return end
+    if not moveSteps(Vector3.new(s.X, topY, s.Z), Vector3.new(g.X, topY, g.Z), CFG.flyTime, 8) then warping = false return end
+    if not moveSteps(Vector3.new(g.X, topY, g.Z), g, CFG.dropTime, 6) then warping = false return end
+    if hrp and hrp.Parent then
+        hrp.CFrame = CFrame.new(g)
+        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        lockStates()
+        print(" | ARC WARP สำเร็จ | " .. (CFG.liftTime + CFG.flyTime + CFG.dropTime) .. "s")
+    end
+    warping = false
+end
+
+RunService.Heartbeat:Connect(function()
+    if not (hum and hum.Parent) then refresh() return end
+    if CFG.god then
+        if hum.Health < hum.MaxHealth then hum.Health = hum.MaxHealth end
+        hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+    end
+    if CFG.antiStun and not warping then
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+        local st = hum:GetState()
+        if st == Enum.HumanoidStateType.GettingUp or st == Enum.HumanoidStateType.Ragdoll
+            or st == Enum.HumanoidStateType.FallingDown or st == Enum.HumanoidStateType.Physics then
+            pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+        end
+        if hrp and hrp.Parent then
+            local v = hrp.AssemblyLinearVelocity
+            if math.abs(v.Y) > 0.1 and hum:GetState() == Enum.HumanoidStateType.Running then
+                hrp.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
+            end
+        end
+    end
+    if CFG.speed_on and not warping then
+        hum.WalkSpeed = math.clamp(CFG.speed_val, CFG.speed_min, CFG.speed_max)
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not (char and CFG.antiStun) then return end
+    for _, v in ipairs(char:GetChildren()) do
+        if v:IsA("BoolValue") or v:IsA("StringValue") then
+            local n = v.Name:lower()
+            if n:find("stun") or n:find("freeze") or n:find("knock") or n:find("down")
+                or n:find("ragdoll") or n:find("slow") then pcall(function() v:Destroy() end) end
+        end
+    end
+    for _, a in ipairs(char:GetAttributes()) do
+        local n = a:lower()
+        if n:find("stun") or n:find("freeze") or n:find("knock") or n:find("ragdoll") or n:find("down") then
+            pcall(function() char:SetAttribute(a, false) end)
+        end
+    end
+end)
+
+PLR.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new(0, 0))
+end)
+
+-- ===== HELPERS UI =====
+local function bd(inst, thick)
+    local s = Instance.new("UIStroke")
+    s.Color = Color3.new(0, 0, 0)
+    s.Thickness = thick or 2
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = inst
+    return s
+end
+
+local function grad(inst, c1, c2, rot)
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new(c1, c2)
+    g.Rotation = rot or 90
+    g.Parent = inst
+    return g
+end
+
+local ACCENT = Color3.fromRGB(255, 200, 40)
+local PURPLE = Color3.fromRGB(120, 20, 140)
+local DARK   = Color3.fromRGB(18, 18, 26)
+local DARK2  = Color3.fromRGB(30, 30, 42)
+
+-- ===== GUI =====
+local gui = Instance.new("ScreenGui")
+gui.Name = "BZ_" .. MAKER:gsub("%s", "")
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = PLR:WaitForChild("PlayerGui")
+
+-- ===== ปุ่มเปิด/ปิด ล็อกนิ่ง มุมขวาบน ไม่มีทางเลื่อน =====
+local toggle = Instance.new("TextButton")
+toggle.Name = "LOCKED_TOGGLE"
+toggle.AnchorPoint = Vector2.new(1, 0)
+toggle.Position = UDim2.new(1, -8, 0, 8)
+toggle.Size = UDim2.new(0, 54, 0, 54)
+toggle.BackgroundColor3 = PURPLE
+toggle.Text = ""
+toggle.AutoButtonColor = true
+toggle.BorderSizePixel = 0
+toggle.Selectable = false
+toggle.Active = false   -- ไม่รับ drag เลย ล็อกสนิท
+toggle.Parent = gui
+Instance.new("UICorner", toggle).CornerRadius = UDim.new(0, 10)
+bd(toggle, 3)
+grad(toggle, PURPLE, Color3.fromRGB(60, 10, 80), 45)
+
+local tIcon = Instance.new("TextLabel")
+tIcon.Size = UDim2.new(1, 0, 0.6, 0)
+tIcon.Position = UDim2.new(0, 0, 0.1, 0)
+tIcon.BackgroundTransparency = 1
+tIcon.Text = "BZ"
+tIcon.TextColor3 = ACCENT
+tIcon.Font = Enum.Font.GothamBlack
+tIcon.TextSize = 17
+tIcon.Parent = toggle
+
+local tSub = Instance.new("TextLabel")
+tSub.Size = UDim2.new(1, 0, 0.3, 0)
+tSub.Position = UDim2.new(0, 0, 0.65, 0)
+tSub.BackgroundTransparency = 1
+tSub.Text = "MENU"
+tSub.TextColor3 = Color3.new(1, 1, 1)
+tSub.Font = Enum.Font.GothamBold
+tSub.TextSize = 9
+tSub.Parent = toggle
+
+-- ===== หน้าต่างฟังค์ชั่น เล็ก เลื่อนได้ =====
+local win = Instance.new("Frame")
+win.Name = "FUNC_WIN"
+win.Size = UDim2.new(0, 196, 0, 250)
+win.Position = UDim2.new(0.5, -98, 0.22, 0)
+win.BackgroundColor3 = DARK
+win.BorderSizePixel = 0
+win.Active = true
+win.Visible = false
+win.Parent = gui
+Instance.new("UICorner", win).CornerRadius = UDim.new(0, 10)
+bd(win, 3)
+
+local bar = Instance.new("Frame")
+bar.Size = UDim2.new(1, 0, 0, 30)
+bar.BackgroundColor3 = PURPLE
+bar.BorderSizePixel = 0
+bar.Parent = win
+Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 10)
+grad(bar, PURPLE, Color3.fromRGB(70, 10, 90), 0)
+
+local function flash(msg)
+    barTitle.Text = " " .. msg
+    task.delay(2, function() barTitle.Text = " " .. MAKER end)
+end
+
+local barTitle = Instance.new("TextLabel")
+barTitle.Size = UDim2.new(1, -40, 1, 0)
+barTitle.Position = UDim2.new(0, 6, 0, 0)
+barTitle.BackgroundTransparency = 1
+barTitle.Text = " " .. MAKER
+barTitle.TextColor3 = ACCENT
+barTitle.Font = Enum.Font.GothamBlack
+barTitle.TextSize = 12
+barTitle.TextXAlignment = Enum.TextXAlignment.Left
+barTitle.Parent = bar
+
+-- ปุ่มย่อ (-) ในแถบ
+local mini = Instance.new("TextButton")
+mini.Size = UDim2.new(0, 26, 0, 26)
+mini.Position = UDim2.new(1, -30, 0, 2)
+mini.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+mini.Text = "–"
+mini.TextColor3 = ACCENT
+mini.Font = Enum.Font.GothamBlack
+mini.TextSize = 16
+mini.BorderSizePixel = 0
+mini.Parent = bar
+Instance.new("UICorner", mini).CornerRadius = UDim.new(0, 6)
+
+local minimized = false
+mini.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    if minimized then
+        body.Visible = false
+        win.Size = UDim2.new(0, 196, 0, 34)
+        mini.Text = "+"
+    else
+        body.Visible = true
+        win.Size = UDim2.new(0, 196, 0, 250)
+        mini.Text = "–"
+    end
+end)
+
+local body = Instance.new("Frame")
+body.Size = UDim2.new(1, -12, 1, -40)
+body.Position = UDim2.new(0, 6, 0, 34)
+body.BackgroundTransparency = 1
+body.Parent = win
+
+local y = 0
+local function mkBtn(txt, col, fn, h)
+    y = y + (h or 34)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, 0, 0, (h or 34) - 4)
+    b.Position = UDim2.new(0, 0, 0, y - (h or 34))
+    b.BackgroundColor3 = col
+    b.Text = txt
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 12
+    b.BorderSizePixel = 0
+    b.Parent = body
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
+    bd(b, 2)
+    grad(b, col, Color3.new(
+        math.clamp(col.R - 0.1, 0, 1),
+        math.clamp(col.G - 0.1, 0, 1),
+        math.clamp(col.B - 0.1, 0, 1)
+    ), 90)
+    b.MouseButton1Click:Connect(fn)
+    return b
+end
+
+mkBtn("ปักหมุดฐาน", Color3.fromRGB(185, 120, 15), function()
+    refresh()
+    if hrp then
+        CFG.pin = hrp.CFrame
+        flash("ปักแล้ว @ " .. math.floor(hrp.Position.X) .. "," .. math.floor(hrp.Position.Y) .. "," .. math.floor(hrp.Position.Z))
+        print(" | pin base:", hrp.Position)
+    else flash("ไม่เจอตัวละคร") end
+end)
+
+local warpTotal = CFG.liftTime + CFG.flyTime + CFG.dropTime
+mkBtn("วาร์ปกลับฐาน ARC (" .. warpTotal .. "s)", Color3.fromRGB(20, 110, 185), function()
+    if not CFG.pin then flash("ยังไม่ได้ปักหมุด!") return end
+    flash("ดึงขึ้น → ข้าม → ลงฐาน")
+    task.spawn(returnBase)
+end)
+
+local godBtn = mkBtn("โดนตีไม่สะท้าน: ON", Color3.fromRGB(30, 160, 70), function()
+    CFG.god = not CFG.god
+    CFG.antiStun = CFG.god
+    godBtn.Text = CFG.god and "โดนตีไม่สะท้าน: ON" or "โดนตีไม่สะท้าน: OFF"
+    godBtn.BackgroundColor3 = CFG.god and Color3.fromRGB(30, 160, 70) or Color3.fromRGB(55, 55, 65)
+end)
+
+-- ===== ช่องพิมพ์ความเร็ว 1-10000 =====
+y = y + 20
+local sl = Instance.new("TextLabel")
+sl.Size = UDim2.new(1, 0, 0, 14)
+sl.Position = UDim2.new(0, 0, 0, y - 14)
+sl.BackgroundTransparency = 1
+sl.Text = "ความเร็ววิ่ง (พิมพ์ 1-10000):"
+sl.TextColor3 = Color3.fromRGB(190, 190, 205)
+sl.Font = Enum.Font.Gotham
+sl.TextSize = 10
+sl.TextXAlignment = Enum.TextXAlignment.Left
+sl.Parent = body
+
+y = y + 24
+local speedBox = Instance.new("TextBox")
+speedBox.Size = UDim2.new(1, 0, 0, 26)
+speedBox.Position = UDim2.new(0, 0, 0, y - 24)
+speedBox.BackgroundColor3 = DARK2
+speedBox.Text = "16"
+speedBox.PlaceholderText = "1-10000 แล้วกด Enter"
+speedBox.TextColor3 = ACCENT
+speedBox.Font = Enum.Font.GothamBold
+speedBox.TextSize = 13
+speedBox.ClearTextOnFocus = false
+speedBox.BorderSizePixel = 0
+speedBox.Parent = body
+Instance.new("UICorner", speedBox).CornerRadius = UDim.new(0, 6)
+bd(speedBox, 2)
+
+y = y + 30
+local speedBtn = Instance.new("TextButton")
+speedBtn.Size = UDim2.new(1, 0, 0, 26)
+speedBtn.Position = UDim2.new(0, 0, 0, y - 30)
+speedBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 65)
+speedBtn.Text = "เปิดความเร็ว (OFF)"
+speedBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+speedBtn.Font = Enum.Font.GothamBold
+speedBtn.TextSize = 12
+speedBtn.BorderSizePixel = 0
+speedBtn.Parent = body
+Instance.new("UICorner", speedBtn).CornerRadius = UDim.new(0, 6)
+bd(speedBtn, 2)
+
+local function applyTypedSpeed()
+    local n = tonumber(speedBox.Text)
+    if not n then flash("ใส่ตัวเลขเท่านั้น!") speedBox.Text = tostring(CFG.speed_val) return end
+    n = math.floor(n)
+    if n < CFG.speed_min or n > CFG.speed_max then
+        flash("ต้องอยู่ในช่วง 1-10000!") speedBox.Text = tostring(CFG.speed_val) return
+    end
+    CFG.speed_val = n
+    CFG.speed_on = true
+    speedBtn.Text = "เปิดความเร็ว: " .. n
+    speedBtn.BackgroundColor3 = Color3.fromRGB(30, 160, 70)
+    speedBtn.TextColor3 = Color3.new(1, 1, 1)
+    if hum and hum.Parent then hum.WalkSpeed = n end
+    flash("ความเร็วตั้งเป็น " .. n)
+    speedBox.Text = tostring(n)
+end
+speedBox.FocusLost:Connect(function(enter) if enter then applyTypedSpeed() end end)
+
+speedBtn.MouseButton1Click:Connect(function()
+    CFG.speed_on = not CFG.speed_on
+    if CFG.speed_on then
+        applyTypedSpeed()
+    else
+        speedBtn.Text = "เปิดความเร็ว (OFF)"
+        speedBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 65)
+        speedBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+        if hum and hum.Parent then hum.WalkSpeed = 16 end
+        flash("ปิดความเร็ว")
+    end
+end)
+
+-- ===== แถบสถานะ + เวลาปัจจุบัน =====
+y = y + 30
+local timeLbl = Instance.new("TextLabel")
+timeLbl.Size = UDim2.new(1, 0, 0, 20)
+timeLbl.Position = UDim2.new(0, 0, 0, y - 26)
+timeLbl.BackgroundColor3 = DARK2
+timeLbl.Text = "--:--:--"
+timeLbl.TextColor3 = ACCENT
+timeLbl.Font = Enum.Font.GothamBold
+timeLbl.TextSize = 12
+timeLbl.BorderSizePixel = 0
+timeLbl.Parent = body
+Instance.new("UICorner", timeLbl).CornerRadius = UDim.new(0, 6)
+bd(timeLbl, 2)
+
+task.spawn(function()
+    while task.wait(1) do
+        local d = DateTime.now():ToLocalTime()
+        timeLbl.Text = string.format("เวลา: %02d:%02d:%02d", d.Hour, d.Minute, d.Second)
+    end
+end)
+
+y = y + 24
+local foot = Instance.new("TextLabel")
+foot.Size = UDim2.new(1, 0, 0, 14)
+foot.Position = UDim2.new(0, 0, 0, y - 24)
+foot.BackgroundTransparency = 1
+foot.Text = "สร้างโดย BankZa Mdz"
+foot.TextColor3 = Color3.fromRGB(120, 120, 140)
+foot.Font = Enum.Font.Gotham
+foot.TextSize = 9
+foot.Parent = body
+
+local totalH = y + 44
+if totalH > 250 then
+    win.Size = UDim2.new(0, 196, 0, totalH)
+    local fullH = totalH
+    mini.MouseButton1Click:Connect(function() end) -- กัน override
+    -- resize handle ตาม minimized
+    task.spawn(function()
+        while task.wait(0.1) do
+            win.Size = minimized and UDim2.new(0, 196, 0, 34) or UDim2.new(0, 196, 0, fullH)
+        end
+    end)
+end
+
+-- ===== เปิด/ปิดเมนู (ปุ่มล็อก) =====
+toggle.MouseButton1Click:Connect(function()
+    win.Visible = not win.Visible
+    tSub.Text = win.Visible and "CLOSE" or "MENU"
+end)
+
+-- ===== หน้าต่างฟังค์ชั่นลากได้อิสระ =====
+local dragging, dragStart, startPos = false, nil, nil
+bar.InputBegan:Connect(function(i)
+    if i.UserInputType ~= Enum.UserInputType.Touch and i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    dragging = true
+    dragStart = i.Position
+    startPos = win.Position
+end)
+UIS.InputChanged:Connect(function(i)
+    if not dragging then return end
+    if i.UserInputType ~= Enum.UserInputType.Touch and i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    local d = i.Position - dragStart
+    win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+end)
+UIS.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+print("======================================")
+print(" loaded | " .. MAKER)
+print(" ปุ่ม BZ ล็อกมุมขวาบน | หน้าต่างลากได้จากแถบม่วง")
+print("======================================")
